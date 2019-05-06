@@ -22,7 +22,7 @@ class VAE(object):
         self.epoch = epoch
         self.batch_size = batch_size
 
-        if dataset_name == 'mnist' or dataset_name == 'fashion-mnist':
+        if 'MNIST' in dataset_name.upper():
             # parameters
             self.input_height = 28
             self.input_width = 28
