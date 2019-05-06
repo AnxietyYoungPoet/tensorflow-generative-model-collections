@@ -248,7 +248,7 @@ class VAE(object):
     @property
     def model_dir(self):
         return "{}_{}_{}_{}".format(
-            self.model_name, self.dataset_name,
+            self.model_name, self.dataset_name.split('/')[-1],
             self.batch_size, self.z_dim)
 
     def save(self, checkpoint_dir, step):
