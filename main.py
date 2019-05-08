@@ -32,6 +32,7 @@ def parse_args():
                         help='The type of GAN', required=True)
     parser.add_argument('--dataset', type=str, default='mnist',
                         help='The name of dataset')
+    parser.add_argument('--data_dir', type=str)
     parser.add_argument('--epoch', type=int, default=20, help='The number of epochs to run')
     parser.add_argument('--batch_size', type=int, default=64, help='The size of batch')
     parser.add_argument('--z_dim', type=int, default=62, help='Dimension of noise vector')
@@ -89,7 +90,8 @@ def main():
                             dataset_name=args.dataset,
                             checkpoint_dir=args.checkpoint_dir,
                             result_dir=args.result_dir,
-                            log_dir=args.log_dir)
+                            log_dir=args.log_dir,
+                            data_dir=args.data_dir)
         if gan is None:
             raise Exception("[!] There is no option for " + args.gan_type)
 

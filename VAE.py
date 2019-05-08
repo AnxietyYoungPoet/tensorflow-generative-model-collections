@@ -13,7 +13,9 @@ import prior_factory as prior
 class VAE(object):
     model_name = "VAE"     # name for checkpoint
 
-    def __init__(self, sess, epoch, batch_size, z_dim, dataset_name, checkpoint_dir, result_dir, log_dir):
+    def __init__(
+        self, sess, epoch, batch_size, z_dim, dataset_name,
+        checkpoint_dir, result_dir, log_dir, data_dir):
         self.sess = sess
         self.dataset_name = dataset_name
         self.checkpoint_dir = checkpoint_dir
@@ -21,8 +23,9 @@ class VAE(object):
         self.log_dir = log_dir
         self.epoch = epoch
         self.batch_size = batch_size
+        self.data_dir = data_dir
 
-        if 'MNIST' in dataset_name.upper():
+        if dataset_name == 'mnist' or dataset_name == 'fashion-mnist':
             # parameters
             self.input_height = 28
             self.input_width = 28
@@ -40,7 +43,7 @@ class VAE(object):
             self.sample_num = 64  # number of generated images to be saved
 
             # load mnist
-            self.data_X, self.data_y = load_mnist(self.dataset_name)
+            self.data_X, self.data_y = load_mnist(self.data_dir)
 
             # get number of batches for a single epoch
             self.num_batches = len(self.data_X) // self.batch_size
@@ -248,7 +251,7 @@ class VAE(object):
     @property
     def model_dir(self):
         return "{}_{}_{}_{}".format(
-            self.model_name, self.dataset_name.split('/')[-1],
+            self.model_name, self.dataset_name,
             self.batch_size, self.z_dim)
 
     def save(self, checkpoint_dir, step):
