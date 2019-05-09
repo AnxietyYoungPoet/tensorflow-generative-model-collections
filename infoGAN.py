@@ -11,7 +11,9 @@ from utils import *
 class infoGAN(object):
     model_name = "infoGAN"     # name for checkpoint
 
-    def __init__(self, sess, epoch, batch_size, z_dim, dataset_name, checkpoint_dir, result_dir, log_dir, SUPERVISED=True):
+    def __init__(
+        self, sess, epoch, batch_size, z_dim, dataset_name, checkpoint_dir,
+        result_dir, log_dir, data_dir, SUPERVISED=True):
         self.sess = sess
         self.dataset_name = dataset_name
         self.checkpoint_dir = checkpoint_dir
@@ -19,6 +21,7 @@ class infoGAN(object):
         self.log_dir = log_dir
         self.epoch = epoch
         self.batch_size = batch_size
+        self.data_dir = data_dir
 
         if dataset_name == 'mnist' or dataset_name == 'fashion-mnist':
             # parameters
@@ -45,7 +48,7 @@ class infoGAN(object):
             self.len_continuous_code = 2  # gaussian distribution (e.g. rotation, thickness)
 
             # load mnist
-            self.data_X, self.data_y = load_mnist(self.dataset_name)
+            self.data_X, self.data_y = load_mnist(self.data_dir)
 
             # get number of batches for a single epoch
             self.num_batches = len(self.data_X) // self.batch_size

@@ -8,8 +8,10 @@ import numpy as np
 from ops import *
 from utils import *
 
-class WGAN(object):
-    model_name = "WGAN"     # name for checkpoint
+import prior_factory as prior
+
+class AAE(object):
+    model_name = "AAE"     # name for checkpoint
 
     def __init__(
         self, sess, epoch, batch_size, z_dim, dataset_name,
@@ -33,9 +35,6 @@ class WGAN(object):
             self.z_dim = z_dim         # dimension of noise-vector
             self.c_dim = 1
 
-            # WGAN parameter
-            self.disc_iters = 1     # The number of critic iterations for one-step of generator
-
             # train
             self.learning_rate = 0.0002
             self.beta1 = 0.5
@@ -51,34 +50,43 @@ class WGAN(object):
         else:
             raise NotImplementedError
 
-    def discriminator(self, x, is_training=True, reuse=False):
+    # Gaussian Encoder
+    def encoder(self, x, is_training=True, reuse=False):
+        # Network Architecture is exactly same as in infoGAN (https://arxiv.org/abs/1606.03657)
+        # Architecture : (64)4c2s-(128)4c2s_BL-FC1024_BL-FC62*4
+        with tf.variable_scope("encoder", reuse=reuse):
+
+            net = lrelu(conv2d(x, 64, 4, 4, 2, 2, name='en_conv1'))
+            net = lrelu(bn(conv2d(net, 128, 4, 4, 2, 2, name='en_conv2'), is_training=is_training, scope='en_bn2'))
+            net = tf.reshape(net, [self.batch_size, -1])
+            net = lrelu(bn(linear(net, 1024, scope='en_fc3'), is_training=is_training, scope='en_bn3'))
+            z = linear(net, self.z_dim, scope='en_fc4')
+
+        return z
+
+    # Bernoulli decoder
+    def decoder(self, z, is_training=True, reuse=False):
+        # Network Architecture is exactly same as in infoGAN (https://arxiv.org/abs/1606.03657)
+        # Architecture : FC1024_BR-FC7x7x128_BR-(64)4dc2s_BR-(1)4dc2s_S
+        with tf.variable_scope("decoder", reuse=reuse):
+            net = tf.nn.relu(bn(linear(z, 1024, scope='de_fc1'), is_training=is_training, scope='de_bn1'))
+            net = tf.nn.relu(bn(linear(net, 128 * 7 * 7, scope='de_fc2'), is_training=is_training, scope='de_bn2'))
+            net = tf.reshape(net, [self.batch_size, 7, 7, 128])
+            net = tf.nn.relu(
+                bn(deconv2d(net, [self.batch_size, 14, 14, 64], 4, 4, 2, 2, name='de_dc3'), is_training=is_training,
+                   scope='de_bn3'))
+
+            out = tf.nn.sigmoid(deconv2d(net, [self.batch_size, 28, 28, 1], 4, 4, 2, 2, name='de_dc4'))
+            return out
+    
+    def discriminator(self, z, is_training=True, reuse=False):
         # Network Architecture is exactly same as in infoGAN (https://arxiv.org/abs/1606.03657)
         # Architecture : (64)4c2s-(128)4c2s_BL-FC1024_BL-FC1_S
         with tf.variable_scope("discriminator", reuse=reuse):
-
-            net = lrelu(conv2d(x, 64, 4, 4, 2, 2, name='d_conv1'))
-            net = lrelu(bn(conv2d(net, 128, 4, 4, 2, 2, name='d_conv2'), is_training=is_training, scope='d_bn2'))
-            net = tf.reshape(net, [self.batch_size, -1])
-            net = lrelu(bn(linear(net, 1024, scope='d_fc3'), is_training=is_training, scope='d_bn3'))
-            out_logit = linear(net, 1, scope='d_fc4')
-            out = tf.nn.sigmoid(out_logit)
-
-            return out, out_logit, net
-
-    def generator(self, z, is_training=True, reuse=False):
-        # Network Architecture is exactly same as in infoGAN (https://arxiv.org/abs/1606.03657)
-        # Architecture : FC1024_BR-FC7x7x128_BR-(64)4dc2s_BR-(1)4dc2s_S
-        with tf.variable_scope("generator", reuse=reuse):
-            net = tf.nn.relu(bn(linear(z, 1024, scope='g_fc1'), is_training=is_training, scope='g_bn1'))
-            net = tf.nn.relu(bn(linear(net, 128 * 7 * 7, scope='g_fc2'), is_training=is_training, scope='g_bn2'))
-            net = tf.reshape(net, [self.batch_size, 7, 7, 128])
-            net = tf.nn.relu(
-                bn(deconv2d(net, [self.batch_size, 14, 14, 64], 4, 4, 2, 2, name='g_dc3'), is_training=is_training,
-                   scope='g_bn3'))
-
-            out = tf.nn.sigmoid(deconv2d(net, [self.batch_size, 28, 28, 1], 4, 4, 2, 2, name='g_dc4'))
-
-            return out
+            net = tf.nn.relu(bn(linear(z, 128, scope='de_fc1'), is_training=is_training, scope='de_bn1'))
+            logits = linear(net, 1, scope='de_fc2')
+            out = tf.nn.sigmoid(logits)
+        return out, logits
 
     def build_model(self):
         # some parameters
@@ -93,52 +101,59 @@ class WGAN(object):
         self.z = tf.placeholder(tf.float32, [bs, self.z_dim], name='z')
 
         """ Loss Function """
+        # encoding
+        z = self.encoder(self.inputs, is_training=True, reuse=False)        
 
-        # output of D for real images
-        D_real, D_real_logits, _ = self.discriminator(self.inputs, is_training=True, reuse=False)
 
-        # output of D for fake images
-        G = self.generator(self.z, is_training=True, reuse=False)
-        D_fake, D_fake_logits, _ = self.discriminator(G, is_training=True, reuse=True)
+        # decoding
+        out = self.decoder(z, is_training=True, reuse=False)
+        self.out = tf.clip_by_value(out, 1e-8, 1 - 1e-8)
 
-        # get loss for discriminator
-        d_loss_real = - tf.reduce_mean(D_real_logits)
-        d_loss_fake = tf.reduce_mean(D_fake_logits)
+        D_real, D_real_logits = self.discriminator(self.z, is_training=True, reuse=False)
+        D_fake, D_fake_logits = self.discriminator(z, is_training=True, reuse=True)
+        self.d_loss = -tf.reduce_mean(tf.log(D_real) + tf.log(1. - D_fake))
+        self.g_loss = -tf.reduce_mean(tf.log(D_fake))
+        # d_loss_real = tf.reduce_mean(
+        #     tf.nn.sigmoid_cross_entropy_with_logits(logits=D_real_logits, labels=tf.ones_like(D_real)))
+        # d_loss_fake = tf.reduce_mean(
+        #     tf.nn.sigmoid_cross_entropy_with_logits(logits=D_fake_logits, labels=tf.zeros_like(D_fake)))
+        # self.d_loss = d_loss_real + d_loss_fake
+        # self.g_loss = tf.reduce_mean(
+        #     tf.nn.sigmoid_cross_entropy_with_logits(logits=D_fake_logits, labels=tf.ones_like(D_fake)))
 
-        self.d_loss = d_loss_real + d_loss_fake
+        # loss
+        marginal_likelihood = tf.reduce_sum(self.inputs * tf.log(self.out) + (1 - self.inputs) * tf.log(1 - self.out),
+                                            [1, 2])
 
-        # get loss for generator
-        self.g_loss = - d_loss_fake
+        self.neg_loglikelihood = -tf.reduce_mean(marginal_likelihood)
 
-        """ Training """
-        # divide trainable variables into a group for D and a group for G
+        self.AAE_loss = self.neg_loglikelihood
+
         t_vars = tf.trainable_variables()
-        d_vars = [var for var in t_vars if 'd_' in var.name]
-        g_vars = [var for var in t_vars if 'g_' in var.name]
-
+        d_vars = [var for var in t_vars if 'discriminator' in var.name]
+        g_vars = [var for var in t_vars if 'encoder' in var.name]
+        decoder_vars = [var for var in t_vars if 'decoder' in var.name]
+        AAE_vars = g_vars + decoder_vars
+        """ Training """
         # optimizers
         with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
-            self.d_optim = tf.train.AdamOptimizer(self.learning_rate, beta1=self.beta1) \
+            self.aae_optim = tf.train.AdamOptimizer(self.learning_rate*5, beta1=self.beta1) \
+                      .minimize(self.AAE_loss, var_list=AAE_vars)
+            self.d_optim = tf.train.AdamOptimizer(self.learning_rate*5, beta1=self.beta1) \
                       .minimize(self.d_loss, var_list=d_vars)
             self.g_optim = tf.train.AdamOptimizer(self.learning_rate*5, beta1=self.beta1) \
                       .minimize(self.g_loss, var_list=g_vars)
 
-        # weight clipping
-        self.clip_D = [p.assign(tf.clip_by_value(p, -0.01, 0.01)) for p in d_vars]
-
         """" Testing """
         # for test
-        self.fake_images = self.generator(self.z, is_training=False, reuse=True)
+        self.fake_images = self.decoder(self.z, is_training=False, reuse=True)
 
         """ Summary """
-        d_loss_real_sum = tf.summary.scalar("d_loss_real", d_loss_real)
-        d_loss_fake_sum = tf.summary.scalar("d_loss_fake", d_loss_fake)
-        d_loss_sum = tf.summary.scalar("d_loss", self.d_loss)
-        g_loss_sum = tf.summary.scalar("g_loss", self.g_loss)
+        nll_sum = tf.summary.scalar("nll", self.neg_loglikelihood)
+        loss_sum = tf.summary.scalar("loss", self.AAE_loss)
 
         # final summary operations
-        self.g_sum = tf.summary.merge([d_loss_fake_sum, g_loss_sum])
-        self.d_sum = tf.summary.merge([d_loss_real_sum, d_loss_sum])
+        self.merged_summary_op = tf.summary.merge_all()
 
     def train(self):
 
@@ -146,7 +161,7 @@ class WGAN(object):
         tf.global_variables_initializer().run()
 
         # graph inputs for visualize training results
-        self.sample_z = np.random.uniform(-1, 1, size=(self.batch_size , self.z_dim))
+        self.sample_z = prior.gaussian(self.batch_size, self.z_dim)
 
         # saver to save model
         self.saver = tf.train.Saver()
@@ -174,27 +189,25 @@ class WGAN(object):
             # get batch data
             for idx in range(start_batch_id, self.num_batches):
                 batch_images = self.data_X[idx*self.batch_size:(idx+1)*self.batch_size]
-                batch_z = np.random.uniform(-1, 1, [self.batch_size, self.z_dim]).astype(np.float32)
+                batch_z = prior.gaussian(self.batch_size, self.z_dim)
 
-                # update D network
-                _, _, summary_str, d_loss = self.sess.run([self.d_optim, self.clip_D, self.d_sum, self.d_loss],
+                # update autoencoder
+                _, summary_str, loss = self.sess.run([self.aae_optim, self.merged_summary_op, self.AAE_loss],
                                                feed_dict={self.inputs: batch_images, self.z: batch_z})
+                self.sess.run(self.d_optim, feed_dict={self.inputs: batch_images, self.z: batch_z})
+                self.sess.run(self.g_optim, feed_dict={self.inputs: batch_images, self.z: batch_z})
                 self.writer.add_summary(summary_str, counter)
-
-                # update G network
-                if (counter - 1) % self.disc_iters == 0:
-                    _, summary_str, g_loss = self.sess.run([self.g_optim, self.g_sum, self.g_loss], feed_dict={self.z: batch_z})
-                    self.writer.add_summary(summary_str, counter)
 
                 # display training status
                 counter += 1
-                print("Epoch: [%2d] [%4d/%4d] time: %4.4f, d_loss: %.8f, g_loss: %.8f" \
-                      % (epoch, idx, self.num_batches, time.time() - start_time, d_loss, g_loss))
+                print("Epoch: [%2d] [%4d/%4d] time: %4.4f, loss: %.8f" \
+                      % (epoch, idx, self.num_batches, time.time() - start_time, loss))
 
                 # save training results for every 300 steps
                 if np.mod(counter, 300) == 0:
                     samples = self.sess.run(self.fake_images,
                                             feed_dict={self.z: self.sample_z})
+
                     tot_num_samples = min(self.sample_num, self.batch_size)
                     manifold_h = int(np.floor(np.sqrt(tot_num_samples)))
                     manifold_w = int(np.floor(np.sqrt(tot_num_samples)))
@@ -221,12 +234,37 @@ class WGAN(object):
 
         """ random condition, random noise """
 
-        z_sample = np.random.uniform(-1, 1, size=(self.batch_size, self.z_dim))
+        z_sample = prior.gaussian(self.batch_size, self.z_dim)
 
         samples = self.sess.run(self.fake_images, feed_dict={self.z: z_sample})
 
         save_images(samples[:image_frame_dim * image_frame_dim, :, :, :], [image_frame_dim, image_frame_dim],
-                    check_folder(self.result_dir + '/' + self.model_dir) + '/' + self.model_name + '_epoch%03d' % epoch + '_test_all_classes.png')
+                    check_folder(
+                        self.result_dir + '/' + self.model_dir) + '/' + self.model_name + '_epoch%03d' % epoch + '_test_all_classes.png')
+
+        """ learned manifold """
+        if self.z_dim == 2:
+            assert self.z_dim == 2
+
+            z_tot = None
+            id_tot = None
+            for idx in range(0, 100):
+                #randomly sampling
+                id = np.random.randint(0,self.num_batches)
+                batch_images = self.data_X[id * self.batch_size:(id + 1) * self.batch_size]
+                batch_labels = self.data_y[id * self.batch_size:(id + 1) * self.batch_size]
+
+                z = self.sess.run(self.mu, feed_dict={self.inputs: batch_images})
+
+                if idx == 0:
+                    z_tot = z
+                    id_tot = batch_labels
+                else:
+                    z_tot = np.concatenate((z_tot, z), axis=0)
+                    id_tot = np.concatenate((id_tot, batch_labels), axis=0)
+
+            save_scattered_image(z_tot, id_tot, -4, 4, name=check_folder(
+                self.result_dir + '/' + self.model_dir) + '/' + self.model_name + '_epoch%03d' % epoch + '_learned_manifold.png')
 
     @property
     def model_dir(self):

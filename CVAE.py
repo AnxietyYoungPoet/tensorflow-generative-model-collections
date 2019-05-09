@@ -13,7 +13,9 @@ import prior_factory as prior
 class CVAE(object):
     model_name = "CVAE"     # name for checkpoint
 
-    def __init__(self, sess, epoch, batch_size, z_dim, dataset_name, checkpoint_dir, result_dir, log_dir):
+    def __init__(
+        self, sess, epoch, batch_size, z_dim, dataset_name, checkpoint_dir,
+        result_dir, log_dir, data_dir):
         self.sess = sess
         self.dataset_name = dataset_name
         self.checkpoint_dir = checkpoint_dir
@@ -21,6 +23,7 @@ class CVAE(object):
         self.log_dir = log_dir
         self.epoch = epoch
         self.batch_size = batch_size
+        self.data_dir = data_dir
 
         if dataset_name == 'mnist' or dataset_name == 'fashion-mnist':
             # parameters
@@ -41,7 +44,7 @@ class CVAE(object):
             self.sample_num = 64  # number of generated images to be saved
 
             # load mnist
-            self.data_X, self.data_y = load_mnist(self.dataset_name)
+            self.data_X, self.data_y = load_mnist(self.data_dir)
 
             # get number of batches for a single epoch
             self.num_batches = len(self.data_X) // self.batch_size

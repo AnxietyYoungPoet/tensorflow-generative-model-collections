@@ -15,6 +15,7 @@ from BEGAN import BEGAN
 ## VAE Variants
 from VAE import VAE
 from CVAE import CVAE
+from AAE import AAE
 
 from utils import show_all_variables
 from utils import check_folder
@@ -28,7 +29,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description=desc)
 
     parser.add_argument('--gan_type', type=str, default='GAN',
-                        choices=['GAN', 'CGAN', 'infoGAN', 'ACGAN', 'EBGAN', 'BEGAN', 'WGAN', 'WGAN_GP', 'DRAGAN', 'LSGAN', 'VAE', 'CVAE'],
+                        choices=['GAN', 'CGAN', 'infoGAN', 'ACGAN', 'EBGAN', 'BEGAN', 'WGAN', 'WGAN_GP', 'DRAGAN', 'LSGAN', 'VAE', 'CVAE', 'AAE'],
                         help='The type of GAN', required=True)
     parser.add_argument('--dataset', type=str, default='mnist',
                         help='The name of dataset')
@@ -76,7 +77,7 @@ def main():
 
     # open session
     models = [GAN, CGAN, infoGAN, ACGAN, EBGAN, WGAN, WGAN_GP, DRAGAN,
-              LSGAN, BEGAN, VAE, CVAE]
+              LSGAN, BEGAN, VAE, CVAE, AAE]
     with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as sess:
         # declare instance for GAN
 
