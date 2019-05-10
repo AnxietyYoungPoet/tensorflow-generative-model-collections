@@ -10,12 +10,14 @@ from utils import *
 
 import prior_factory as prior
 
+
 class AAE(object):
     model_name = "AAE"     # name for checkpoint
 
     def __init__(
         self, sess, epoch, batch_size, z_dim, dataset_name,
-        checkpoint_dir, result_dir, log_dir, data_dir):
+        checkpoint_dir, result_dir, log_dir, data_dir
+    ):
         self.sess = sess
         self.dataset_name = dataset_name
         self.checkpoint_dir = checkpoint_dir
@@ -36,7 +38,7 @@ class AAE(object):
             self.c_dim = 1
 
             # train
-            self.learning_rate = 0.0002
+            self.learning_rate = 1e-3
             self.beta1 = 0.5
 
             # test
@@ -122,10 +124,10 @@ class AAE(object):
         #     tf.nn.sigmoid_cross_entropy_with_logits(logits=D_fake_logits, labels=tf.ones_like(D_fake)))
 
         # loss
-        marginal_likelihood = tf.reduce_sum(self.inputs * tf.log(self.out) + (1 - self.inputs) * tf.log(1 - self.out),
-                                            [1, 2])
+        # marginal_likelihood = tf.reduce_sum(self.inputs * tf.log(self.out) + (1 - self.inputs) * tf.log(1 - self.out),
+                                            # [1, 2])
 
-        self.neg_loglikelihood = -tf.reduce_mean(marginal_likelihood)
+        self.neg_loglikelihood = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.out, labels=self.inputs))
 
         self.AAE_loss = self.neg_loglikelihood
 

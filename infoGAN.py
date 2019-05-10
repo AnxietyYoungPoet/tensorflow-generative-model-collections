@@ -1,4 +1,4 @@
-#-*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 from __future__ import division
 import os
 import time
@@ -8,12 +8,14 @@ import numpy as np
 from ops import *
 from utils import *
 
+
 class infoGAN(object):
     model_name = "infoGAN"     # name for checkpoint
 
     def __init__(
         self, sess, epoch, batch_size, z_dim, dataset_name, checkpoint_dir,
-        result_dir, log_dir, data_dir, SUPERVISED=True):
+        result_dir, log_dir, data_dir, SUPERVISED=True
+    ):
         self.sess = sess
         self.dataset_name = dataset_name
         self.checkpoint_dir = checkpoint_dir
@@ -34,7 +36,7 @@ class infoGAN(object):
             self.y_dim = 12         # dimension of code-vector (label+two features)
             self.c_dim = 1
 
-            self.SUPERVISED = SUPERVISED # if it is true, label info is directly used for code
+            self.SUPERVISED = SUPERVISED  # if it is true, label info is directly used for code
 
             # train
             self.learning_rate = 0.0002
